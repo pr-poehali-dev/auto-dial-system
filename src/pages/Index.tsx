@@ -642,10 +642,7 @@ const Index = () => {
           <TabsContent value="tasks" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Задачи автопрозвона</h2>
-              <Button className="bg-coral-500 hover:bg-coral-600 text-white">
-                <Icon name="Plus" size={16} className="mr-2" />
-                Создать задачу
-              </Button>
+              <Button className="bg-coral-500 hover:bg-coral-600 text-white">Создать задачу </Button>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
