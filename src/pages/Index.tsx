@@ -6,6 +6,12 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 
 interface CallTask {
@@ -35,8 +41,33 @@ interface AIMessage {
   type: 'tip' | 'warning' | 'success';
 }
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'operator';
+  status: 'active' | 'inactive' | 'busy';
+  tasksAssigned: number;
+  callsToday: number;
+  successRate: number;
+  lastActivity: string;
+}
+
+interface CallRecord {
+  id: string;
+  operator: string;
+  contact: string;
+  duration: string;
+  timestamp: string;
+  resolution: string;
+  recording?: string;
+}
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [currentUser] = useState({ role: 'admin', name: 'Администратор' }); // Mock current user
+  const [isVideoConferenceOpen, setIsVideoConferenceOpen] = useState(false);
+  const [selectedCallRecording, setSelectedCallRecording] = useState<string | null>(null);
   
   const callTasks: CallTask[] = [
     {
@@ -119,6 +150,83 @@ const Index = () => {
     }
   ];
 
+  const users: User[] = [
+    {
+      id: '1',
+      name: 'Анна Кузнецова',
+      email: 'anna.k@company.com',
+      role: 'operator',
+      status: 'busy',
+      tasksAssigned: 2,
+      callsToday: 45,
+      successRate: 68,
+      lastActivity: '2 минуты назад'
+    },
+    {
+      id: '2',
+      name: 'Михаил Смирнов',
+      email: 'mikhail.s@company.com',
+      role: 'operator',
+      status: 'active',
+      tasksAssigned: 1,
+      callsToday: 32,
+      successRate: 45,
+      lastActivity: '1 минута назад'
+    },
+    {
+      id: '3',
+      name: 'Елена Волкова',
+      email: 'elena.v@company.com',
+      role: 'operator',
+      status: 'active',
+      tasksAssigned: 2,
+      callsToday: 51,
+      successRate: 73,
+      lastActivity: '5 минут назад'
+    },
+    {
+      id: '4',
+      name: 'Дмитрий Петров',
+      email: 'dmitry.p@company.com',
+      role: 'admin',
+      status: 'active',
+      tasksAssigned: 0,
+      callsToday: 0,
+      successRate: 0,
+      lastActivity: 'сейчас'
+    }
+  ];
+
+  const callRecords: CallRecord[] = [
+    {
+      id: '1',
+      operator: 'Анна К.',
+      contact: '+7 (999) 123-45-67',
+      duration: '02:34',
+      timestamp: '14:45',
+      resolution: 'Успешно',
+      recording: '/recordings/call_001.mp3'
+    },
+    {
+      id: '2',
+      operator: 'Михаил С.',
+      contact: '+7 (999) 987-65-43',
+      duration: '01:12',
+      timestamp: '14:30',
+      resolution: 'Отказ',
+      recording: '/recordings/call_002.mp3'
+    },
+    {
+      id: '3',
+      operator: 'Елена В.',
+      contact: '+7 (999) 555-77-88',
+      duration: '03:45',
+      timestamp: '14:15',
+      resolution: 'Перезвон',
+      recording: '/recordings/call_003.mp3'
+    }
+  ];
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-green-500';
@@ -165,9 +273,23 @@ const Index = () => {
                 <Icon name="Circle" size={8} className="mr-1 fill-current" />
                 Система активна
               </Badge>
+              {currentUser.role === 'admin' && (
+                <Button 
+                  onClick={() => setIsVideoConferenceOpen(true)} 
+                  variant="outline" 
+                  size="sm"
+                  className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                >
+                  <Icon name="Video" size={16} className="mr-2" />
+                  Видеоконференция
+                </Button>
+              )}
               <Avatar>
-                <AvatarFallback className="bg-coral-100 text-coral-700">АД</AvatarFallback>
+                <AvatarFallback className="bg-coral-100 text-coral-700">
+                  {currentUser.role === 'admin' ? 'АД' : 'ОП'}
+                </AvatarFallback>
               </Avatar>
+              <span className="text-sm text-gray-600">{currentUser.name}</span>
             </div>
           </div>
         </div>
@@ -177,7 +299,7 @@ const Index = () => {
       <nav className="bg-white/60 backdrop-blur-sm border-b border-coral-100">
         <div className="container mx-auto px-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-4 lg:grid-cols-8 w-full bg-transparent h-14">
+            <TabsList className="grid grid-cols-4 lg:grid-cols-9 w-full bg-transparent h-14">{/* Добавляем колонку для панели администратора */}
               <TabsTrigger value="dashboard" className="data-[state=active]:bg-coral-100 data-[state=active]:text-coral-700">
                 <Icon name="LayoutDashboard" size={16} className="mr-2" />
                 Дашборд
@@ -210,6 +332,12 @@ const Index = () => {
                 <Icon name="Bot" size={16} className="mr-2" />
                 ИИ
               </TabsTrigger>
+              {currentUser.role === 'admin' && (
+                <TabsTrigger value="admin" className="data-[state=active]:bg-coral-100 data-[state=active]:text-coral-700">
+                  <Icon name="Shield" size={16} className="mr-2" />
+                  Админ
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
         </div>
@@ -513,7 +641,264 @@ const Index = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Admin Panel */}
+          {currentUser.role === 'admin' && (
+            <TabsContent value="admin" className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Панель администратора</h2>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setIsVideoConferenceOpen(true)}
+                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    <Icon name="Video" size={16} className="mr-2" />
+                    Видеоконференция
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* User Management */}
+                <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Icon name="Users" className="h-5 w-5 text-coral-500" />
+                      Управление пользователями
+                    </CardTitle>
+                    <CardDescription>Операторы и администраторы системы</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-80">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Имя</TableHead>
+                            <TableHead>Роль</TableHead>
+                            <TableHead>Статус</TableHead>
+                            <TableHead>Действия</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{user.name}</p>
+                                  <p className="text-xs text-gray-500">{user.email}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                                  {user.role === 'admin' ? 'Админ' : 'Оператор'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${getStatusColor(user.status)} text-white`}>
+                                  {user.status === 'active' ? 'Активен' : 
+                                   user.status === 'busy' ? 'Занят' : 'Неактивен'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button variant="outline" size="sm">
+                                    <Icon name="Edit" size={14} />
+                                  </Button>
+                                  {user.role === 'operator' && (
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      className="text-blue-600 hover:text-blue-700"
+                                    >
+                                      <Icon name="ArrowUp" size={14} />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                {/* Call Monitoring & Recordings */}
+                <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Icon name="Headphones" className="h-5 w-5 text-mystic-500" />
+                      Прослушка звонков
+                    </CardTitle>
+                    <CardDescription>Записи разговоров и мониторинг качества</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-80">
+                      <div className="space-y-3">
+                        {callRecords.map((record) => (
+                          <div key={record.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                            <div className="space-y-1">
+                              <p className="font-medium">{record.operator}</p>
+                              <p className="text-sm text-gray-600">{record.contact}</p>
+                              <div className="flex items-center gap-4 text-xs text-gray-500">
+                                <span>{record.timestamp}</span>
+                                <span>{record.duration}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {record.resolution}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setSelectedCallRecording(record.id)}
+                              >
+                                <Icon name="Play" size={14} className="mr-1" />
+                                Слушать
+                              </Button>
+                              <Button variant="outline" size="sm">
+                                <Icon name="Download" size={14} />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* System Statistics for Admins */}
+              <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Icon name="BarChart3" className="h-5 w-5 text-green-500" />
+                    Системная аналитика
+                  </CardTitle>
+                  <CardDescription>Детальная статистика по всем операторам и задачам</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-coral-600 mb-2">
+                        {users.filter(u => u.role === 'operator').length}
+                      </div>
+                      <p className="text-sm text-gray-600">Активных операторов</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-mystic-600 mb-2">
+                        {users.reduce((acc, u) => acc + u.callsToday, 0)}
+                      </div>
+                      <p className="text-sm text-gray-600">Звонков сегодня</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-2">
+                        {Math.round(users.filter(u => u.role === 'operator').reduce((acc, u) => acc + u.successRate, 0) / users.filter(u => u.role === 'operator').length)}%
+                      </div>
+                      <p className="text-sm text-gray-600">Средняя конверсия</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
+
+        {/* Video Conference Modal */}
+        <Dialog open={isVideoConferenceOpen} onOpenChange={setIsVideoConferenceOpen}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Icon name="Video" className="h-5 w-5" />
+                Видеоконференция с командой
+              </DialogTitle>
+              <DialogDescription>
+                Совещание с операторами и анализ результатов работы
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              <div className="bg-gray-900 rounded-lg h-64 flex items-center justify-center">
+                <div className="text-center text-white">
+                  <Icon name="Video" className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Видеоконференция будет доступна после интеграции с WebRTC</p>
+                </div>
+              </div>
+              
+              {/* Meeting Controls */}
+              <div className="flex justify-center gap-4">
+                <Button variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                  <Icon name="MicOff" size={16} className="mr-2" />
+                  Микрофон
+                </Button>
+                <Button variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                  <Icon name="VideoOff" size={16} className="mr-2" />
+                  Камера
+                </Button>
+                <Button variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                  <Icon name="Share" size={16} className="mr-2" />
+                  Экран
+                </Button>
+              </div>
+
+              {/* Meeting Participants */}
+              <div className="grid grid-cols-3 gap-4">
+                {users.filter(u => u.role === 'operator').map(user => (
+                  <div key={user.id} className="bg-gray-100 rounded-lg p-3 text-center">
+                    <Avatar className="mx-auto mb-2">
+                      <AvatarFallback>{user.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                    </Avatar>
+                    <p className="text-sm font-medium">{user.name}</p>
+                    <Badge className={`${getStatusColor(user.status)} text-white text-xs`}>
+                      {user.status === 'active' ? 'В сети' : 'Занят'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Call Recording Player Modal */}
+        <Dialog open={!!selectedCallRecording} onOpenChange={() => setSelectedCallRecording(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Запись звонка</DialogTitle>
+              <DialogDescription>
+                Прослушивание записи разговора оператора
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-gray-100 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="font-medium">
+                      {callRecords.find(r => r.id === selectedCallRecording)?.operator}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {callRecords.find(r => r.id === selectedCallRecording)?.contact}
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {callRecords.find(r => r.id === selectedCallRecording)?.resolution}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Button size="sm">
+                    <Icon name="Play" size={14} className="mr-2" />
+                    Воспроизвести
+                  </Button>
+                  <div className="flex-1 bg-gray-200 rounded-full h-2">
+                    <div className="bg-coral-500 h-2 rounded-full w-1/3"></div>
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    {callRecords.find(r => r.id === selectedCallRecording)?.duration}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
