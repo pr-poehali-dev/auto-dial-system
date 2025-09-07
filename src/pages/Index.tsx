@@ -61,6 +61,26 @@ interface CallRecord {
   timestamp: string;
   resolution: string;
   recording?: string;
+  rating?: number;
+  comment?: string;
+  evaluatedBy?: string;
+}
+
+interface OperatorShift {
+  id: string;
+  operatorId: string;
+  startTime: string;
+  endTime?: string;
+  breakTime: number; // в минутах
+  maxBreakTime: number;
+  status: 'working' | 'on-break' | 'finished';
+}
+
+interface PresentationSlide {
+  id: string;
+  title: string;
+  type: 'stats' | 'chart' | 'table';
+  data: any;
 }
 
 const Index = () => {
@@ -68,6 +88,13 @@ const Index = () => {
   const [currentUser] = useState({ role: 'admin', name: 'Администратор' }); // Mock current user
   const [isVideoConferenceOpen, setIsVideoConferenceOpen] = useState(false);
   const [selectedCallRecording, setSelectedCallRecording] = useState<string | null>(null);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [operatorShift, setOperatorShift] = useState<OperatorShift | null>(null);
+  const [isOnBreak, setIsOnBreak] = useState(false);
+  const [breakTimeUsed, setBreakTimeUsed] = useState(0);
+  const [callRating, setCallRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
   
   const callTasks: CallTask[] = [
     {
@@ -205,7 +232,10 @@ const Index = () => {
       duration: '02:34',
       timestamp: '14:45',
       resolution: 'Успешно',
-      recording: '/recordings/call_001.mp3'
+      recording: '/recordings/call_001.mp3',
+      rating: 4,
+      comment: 'Хорошая презентация продукта',
+      evaluatedBy: 'Администратор'
     },
     {
       id: '2',
@@ -214,7 +244,10 @@ const Index = () => {
       duration: '01:12',
       timestamp: '14:30',
       resolution: 'Отказ',
-      recording: '/recordings/call_002.mp3'
+      recording: '/recordings/call_002.mp3',
+      rating: 2,
+      comment: 'Нужно улучшить технику возражений',
+      evaluatedBy: 'Администратор'
     },
     {
       id: '3',
@@ -223,7 +256,46 @@ const Index = () => {
       duration: '03:45',
       timestamp: '14:15',
       resolution: 'Перезвон',
-      recording: '/recordings/call_003.mp3'
+      recording: '/recordings/call_003.mp3',
+      rating: 5,
+      comment: 'Отличная работа с возражениями',
+      evaluatedBy: 'Администратор'
+    }
+  ];
+
+  const presentationSlides: PresentationSlide[] = [
+    {
+      id: '1',
+      title: 'Общая статистика дня',
+      type: 'stats',
+      data: {
+        totalCalls: users.reduce((acc, u) => acc + u.callsToday, 0),
+        successfulCalls: 468,
+        averageConversion: 24.8,
+        activeOperators: users.filter(u => u.role === 'operator' && u.status === 'active').length
+      }
+    },
+    {
+      id: '2', 
+      title: 'Производительность операторов',
+      type: 'table',
+      data: users.filter(u => u.role === 'operator').map(u => ({
+        name: u.name,
+        calls: u.callsToday,
+        success: u.successRate,
+        tasks: u.tasksAssigned
+      }))
+    },
+    {
+      id: '3',
+      title: 'Статистика по задачам',
+      type: 'table', 
+      data: callTasks.map(t => ({
+        name: t.name,
+        progress: Math.round((t.processed / t.contacts) * 100),
+        success: t.success,
+        conversion: Math.round((t.success / t.processed) * 100)
+      }))
     }
   ];
 
@@ -273,6 +345,73 @@ const Index = () => {
                 <Icon name="Circle" size={8} className="mr-1 fill-current" />
                 Система активна
               </Badge>
+              
+              {/* Operator Controls */}
+              {currentUser.role === 'operator' && (
+                <div className="flex items-center gap-2">
+                  {!operatorShift ? (
+                    <Button 
+                      onClick={() => setOperatorShift({
+                        id: '1',
+                        operatorId: '1',
+                        startTime: new Date().toLocaleTimeString(),
+                        breakTime: 0,
+                        maxBreakTime: 60,
+                        status: 'working'
+                      })}
+                      className="bg-green-500 hover:bg-green-600 text-white"
+                      size="sm"
+                    >
+                      <Icon name="Play" size={16} className="mr-2" />
+                      Начать смену
+                    </Button>
+                  ) : (
+                    <>
+                      {operatorShift.status === 'working' && (
+                        <>
+                          <Button 
+                            onClick={() => {
+                              setIsOnBreak(true);
+                              setOperatorShift({...operatorShift, status: 'on-break'});
+                            }}
+                            disabled={breakTimeUsed >= operatorShift.maxBreakTime}
+                            variant="outline" 
+                            size="sm"
+                            className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                          >
+                            <Icon name="Pause" size={16} className="mr-2" />
+                            Перерыв ({breakTimeUsed}/{operatorShift.maxBreakTime}м)
+                          </Button>
+                          <Button 
+                            onClick={() => setOperatorShift({...operatorShift, status: 'finished', endTime: new Date().toLocaleTimeString()})}
+                            variant="outline" 
+                            size="sm"
+                            className="bg-red-50 text-red-700 border-red-200"
+                          >
+                            <Icon name="Square" size={16} className="mr-2" />
+                            Завершить
+                          </Button>
+                        </>
+                      )}
+                      {operatorShift.status === 'on-break' && (
+                        <Button 
+                          onClick={() => {
+                            setIsOnBreak(false);
+                            setOperatorShift({...operatorShift, status: 'working'});
+                          }}
+                          className="bg-green-500 hover:bg-green-600 text-white"
+                          size="sm"
+                        >
+                          <Icon name="Play" size={16} className="mr-2" />
+                          Вернуться к работе
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Admin Controls */}
               {currentUser.role === 'admin' && (
                 <Button 
                   onClick={() => setIsVideoConferenceOpen(true)} 
@@ -284,12 +423,25 @@ const Index = () => {
                   Видеоконференция
                 </Button>
               )}
+              
               <Avatar>
                 <AvatarFallback className="bg-coral-100 text-coral-700">
                   {currentUser.role === 'admin' ? 'АД' : 'ОП'}
                 </AvatarFallback>
               </Avatar>
               <span className="text-sm text-gray-600">{currentUser.name}</span>
+              
+              {operatorShift && (
+                <Badge variant="outline" className={`${
+                  operatorShift.status === 'working' ? 'bg-green-50 text-green-700 border-green-200' :
+                  operatorShift.status === 'on-break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                  'bg-gray-50 text-gray-700 border-gray-200'
+                }`}>
+                  {operatorShift.status === 'working' ? 'В работе' :
+                   operatorShift.status === 'on-break' ? 'На перерыве' :
+                   'Смена завершена'}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -442,6 +594,22 @@ const Index = () => {
                 <CardContent>
                   <ScrollArea className="h-80">
                     <div className="space-y-4">
+                      {/* AI Error Notifications for Current User */}
+                      {currentUser.role === 'operator' && (
+                        <div className="bg-red-50 border-l-4 border-red-400 p-3 rounded-lg">
+                          <div className="flex items-start justify-between">
+                            <Icon name="AlertTriangle" className="h-4 w-4 mt-0.5 text-red-500" />
+                            <span className="text-xs text-gray-500">Только что</span>
+                          </div>
+                          <p className="text-sm mt-2 font-medium">🚨 Анализ вашего последнего звонка</p>
+                          <p className="text-sm mt-1">Обнаружены области для улучшения: слишком быстрая речь, недостаточное время на возражения. Рекомендую замедлить темп и активнее слушать клиента.</p>
+                          <Button size="sm" variant="outline" className="mt-2 text-xs">
+                            <Icon name="Play" size={12} className="mr-1" />
+                            Прослушать фрагмент
+                          </Button>
+                        </div>
+                      )}
+                      
                       {aiMessages.map((msg) => (
                         <div key={msg.id} className={`p-3 rounded-lg border-l-4 ${
                           msg.type === 'tip' ? 'bg-blue-50 border-blue-400' :
@@ -748,18 +916,35 @@ const Index = () => {
                                 </Badge>
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => setSelectedCallRecording(record.id)}
-                              >
-                                <Icon name="Play" size={14} className="mr-1" />
-                                Слушать
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                <Icon name="Download" size={14} />
-                              </Button>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => setSelectedCallRecording(record.id)}
+                                >
+                                  <Icon name="Play" size={14} className="mr-1" />
+                                  Слушать
+                                </Button>
+                                <Button variant="outline" size="sm">
+                                  <Icon name="Download" size={14} />
+                                </Button>
+                              </div>
+                              {record.rating && (
+                                <div className="text-right">
+                                  <div className="flex items-center gap-1 justify-end">
+                                    {[1,2,3,4,5].map(star => (
+                                      <Icon 
+                                        key={star}
+                                        name="Star" 
+                                        size={12} 
+                                        className={star <= record.rating! ? "text-yellow-400 fill-current" : "text-gray-300"} 
+                                      />
+                                    ))}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-1">{record.comment}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -818,28 +1003,147 @@ const Index = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-6">
-              <div className="bg-gray-900 rounded-lg h-64 flex items-center justify-center">
-                <div className="text-center text-white">
-                  <Icon name="Video" className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Видеоконференция будет доступна после интеграции с WebRTC</p>
-                </div>
-              </div>
-              
-              {/* Meeting Controls */}
-              <div className="flex justify-center gap-4">
-                <Button variant="outline" className="bg-red-50 text-red-600 border-red-200">
-                  <Icon name="MicOff" size={16} className="mr-2" />
-                  Микрофон
-                </Button>
-                <Button variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
-                  <Icon name="VideoOff" size={16} className="mr-2" />
-                  Камера
-                </Button>
-                <Button variant="outline" className="bg-green-50 text-green-600 border-green-200">
-                  <Icon name="Share" size={16} className="mr-2" />
-                  Экран
-                </Button>
-              </div>
+              {!isPresentationMode ? (
+                <>
+                  <div className="bg-gray-900 rounded-lg h-64 flex items-center justify-center">
+                    <div className="text-center text-white">
+                      <Icon name="Video" className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Видеоконференция активна</p>
+                    </div>
+                  </div>
+                  
+                  {/* Meeting Controls */}
+                  <div className="flex justify-center gap-4">
+                    <Button variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                      <Icon name="MicOff" size={16} className="mr-2" />
+                      Микрофон
+                    </Button>
+                    <Button variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                      <Icon name="VideoOff" size={16} className="mr-2" />
+                      Камера
+                    </Button>
+                    <Button variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                      <Icon name="Share" size={16} className="mr-2" />
+                      Экран
+                    </Button>
+                    <Button 
+                      onClick={() => setIsPresentationMode(true)}
+                      className="bg-coral-500 hover:bg-coral-600 text-white"
+                    >
+                      <Icon name="Presentation" size={16} className="mr-2" />
+                      Презентация
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Presentation Mode */}
+                  <div className="bg-white rounded-lg border">
+                    <div className="bg-gray-800 text-white px-4 py-2 flex items-center justify-between rounded-t-lg">
+                      <h3 className="font-medium">Презентация результатов работы</h3>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
+                          disabled={currentSlide === 0}
+                          className="text-white border-white hover:bg-white hover:text-black"
+                        >
+                          <Icon name="ChevronLeft" size={14} />
+                        </Button>
+                        <span className="text-sm">{currentSlide + 1} / {presentationSlides.length}</span>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setCurrentSlide(Math.min(presentationSlides.length - 1, currentSlide + 1))}
+                          disabled={currentSlide === presentationSlides.length - 1}
+                          className="text-white border-white hover:bg-white hover:text-black"
+                        >
+                          <Icon name="ChevronRight" size={14} />
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setIsPresentationMode(false)}
+                          className="text-white border-white hover:bg-white hover:text-black"
+                        >
+                          <Icon name="X" size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="p-6 h-96">
+                      {presentationSlides[currentSlide] && (
+                        <div className="h-full">
+                          <h2 className="text-2xl font-bold mb-6 text-center">{presentationSlides[currentSlide].title}</h2>
+                          
+                          {presentationSlides[currentSlide].type === 'stats' && (
+                            <div className="grid grid-cols-2 gap-6 h-full">
+                              <div className="text-center">
+                                <div className="text-4xl font-bold text-coral-600 mb-2">
+                                  {presentationSlides[currentSlide].data.totalCalls}
+                                </div>
+                                <p className="text-lg">Всего звонков</p>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-4xl font-bold text-green-600 mb-2">
+                                  {presentationSlides[currentSlide].data.successfulCalls}
+                                </div>
+                                <p className="text-lg">Успешных контактов</p>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-4xl font-bold text-mystic-600 mb-2">
+                                  {presentationSlides[currentSlide].data.averageConversion}%
+                                </div>
+                                <p className="text-lg">Средняя конверсия</p>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-4xl font-bold text-blue-600 mb-2">
+                                  {presentationSlides[currentSlide].data.activeOperators}
+                                </div>
+                                <p className="text-lg">Активных операторов</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {presentationSlides[currentSlide].type === 'table' && (
+                            <div className="overflow-auto h-full">
+                              <table className="w-full border-collapse">
+                                <thead>
+                                  <tr className="border-b">
+                                    {Object.keys(presentationSlides[currentSlide].data[0] || {}).map(key => (
+                                      <th key={key} className="text-left p-3 font-semibold capitalize">
+                                        {key === 'name' ? 'Имя' : 
+                                         key === 'calls' ? 'Звонки' :
+                                         key === 'success' ? 'Успешно' :
+                                         key === 'tasks' ? 'Задачи' :
+                                         key === 'progress' ? 'Прогресс' :
+                                         key === 'conversion' ? 'Конверсия' : key}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {presentationSlides[currentSlide].data.map((row: any, index: number) => (
+                                    <tr key={index} className="border-b">
+                                      {Object.values(row).map((value: any, cellIndex: number) => (
+                                        <td key={cellIndex} className="p-3">
+                                          {typeof value === 'number' && Object.keys(row)[cellIndex].includes('percentage') ? 
+                                            `${value}%` : value}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Meeting Participants */}
               <div className="grid grid-cols-3 gap-4">
@@ -895,6 +1199,48 @@ const Index = () => {
                     {callRecords.find(r => r.id === selectedCallRecording)?.duration}
                   </span>
                 </div>
+                
+                {/* Call Rating Section for Admins */}
+                {currentUser.role === 'admin' && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="font-medium mb-3">Оценка звонка</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-sm text-gray-600 mb-2 block">Рейтинг</Label>
+                        <div className="flex items-center gap-1">
+                          {[1,2,3,4,5].map(star => (
+                            <button
+                              key={star}
+                              onClick={() => setCallRating(star)}
+                              className="p-1"
+                            >
+                              <Icon 
+                                name="Star" 
+                                size={20} 
+                                className={star <= callRating ? "text-yellow-400 fill-current" : "text-gray-300"} 
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="rating-comment" className="text-sm text-gray-600">Комментарий</Label>
+                        <textarea
+                          id="rating-comment"
+                          value={ratingComment}
+                          onChange={(e) => setRatingComment(e.target.value)}
+                          placeholder="Оставьте комментарий по качеству звонка..."
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm resize-none"
+                          rows={3}
+                        />
+                      </div>
+                      <Button size="sm" className="bg-coral-500 hover:bg-coral-600">
+                        <Icon name="Save" size={14} className="mr-2" />
+                        Сохранить оценку
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </DialogContent>
