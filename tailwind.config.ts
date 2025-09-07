@@ -61,6 +61,28 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				coral: {
+					DEFAULT: '#FF6B6B',
+					50: '#FFF5F5',
+					100: '#FED7D7',
+					500: '#FF6B6B',
+					600: '#E53E3E',
+					700: '#C53030'
+				},
+				mystic: {
+					DEFAULT: '#40407A',
+					50: '#F7F7FC',
+					100: '#E2E2F1',
+					500: '#40407A',
+					600: '#2C2C54',
+					700: '#1A1A2E',
+					800: '#16213E',
+					900: '#0F1419'
+				},
+				gradient: {
+					start: '#FF6B6B',
+					end: '#40407A'
 				}
 			},
 			borderRadius: {
