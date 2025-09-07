@@ -38,7 +38,31 @@ interface AIMessage {
   id: string;
   message: string;
   timestamp: string;
-  type: 'tip' | 'warning' | 'success';
+  type: 'tip' | 'warning' | 'success' | 'transfer' | 'calendar' | 'automation';
+  isRead: boolean;
+  priority: 'low' | 'medium' | 'high';
+  actionRequired?: boolean;
+  taskId?: string;
+}
+
+interface TaskTemplate {
+  id: string;
+  name: string;
+  script: string;
+  targetAudience: string;
+  expectedContacts: number;
+  priority: 'low' | 'medium' | 'high';
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+  type: 'interview' | 'training' | 'meeting';
+  attendees: string[];
+  location?: string;
 }
 
 interface User {
@@ -95,6 +119,24 @@ const Index = () => {
   const [breakTimeUsed, setBreakTimeUsed] = useState(0);
   const [callRating, setCallRating] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
+  const [isTaskCreationOpen, setIsTaskCreationOpen] = useState(false);
+  const [uploadedContacts, setUploadedContacts] = useState<File | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [newTaskName, setNewTaskName] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    description: '',
+    date: '',
+    time: '',
+    duration: '60',
+    type: 'interview' as const
+  });
+  const [aiPersonality, setAiPersonality] = useState({
+    mode: 'helpful', // helpful, enthusiastic, analytical
+    lastInteraction: '',
+    learningPatterns: [] as string[]
+  });
   
   const callTasks: CallTask[] = [
     {
@@ -263,6 +305,56 @@ const Index = () => {
     }
   ];
 
+  const taskTemplates: TaskTemplate[] = [
+    {
+      id: '1',
+      name: 'Холодные продажи',
+      script: 'Привет! Меня зовут {name}, я звоню от компании {company}. У нас есть отличное предложение...',
+      targetAudience: 'Потенциальные клиенты',
+      expectedContacts: 1000,
+      priority: 'high'
+    },
+    {
+      id: '2', 
+      name: 'Опрос клиентов',
+      script: 'Здравствуйте! Мы проводим опрос среди наших клиентов...',
+      targetAudience: 'Существующие клиенты',
+      expectedContacts: 500,
+      priority: 'medium'
+    },
+    {
+      id: '3',
+      name: 'Найм сотрудников',
+      script: 'Добрый день! Мы рассматриваем вашу кандидатуру на позицию...',
+      targetAudience: 'Соискатели',
+      expectedContacts: 200,
+      priority: 'high'
+    }
+  ];
+
+  const calendarEvents: CalendarEvent[] = [
+    {
+      id: '1',
+      title: 'Собеседование с Анной Петровой',
+      description: 'Позиция: Менеджер по продажам',
+      startTime: '2024-09-09T10:00:00',
+      endTime: '2024-09-09T11:00:00',
+      type: 'interview',
+      attendees: ['anna.petrova@email.com', 'hr@company.com'],
+      location: 'Переговорная 1'
+    },
+    {
+      id: '2',
+      title: 'Обучение новых операторов',
+      description: 'Техники работы с возражениями',
+      startTime: '2024-09-09T14:00:00',
+      endTime: '2024-09-09T16:00:00',
+      type: 'training',
+      attendees: ['operator1@company.com', 'operator2@company.com'],
+      location: 'Конференц-зал'
+    }
+  ];
+
   const presentationSlides: PresentationSlide[] = [
     {
       id: '1',
@@ -321,6 +413,82 @@ const Index = () => {
       case 'resolving': return 'Резолюция';
       default: return status;
     }
+  };
+
+  const generateLiveAIMessage = () => {
+    const messages = [
+      { type: 'tip', content: '💡 Анна К. показывает отличные результаты! Может поделиться опытом с командой?' },
+      { type: 'warning', content: '⚠️ Михаил С. долго не отвечает клиентам. Возможно, нужна помощь?' },
+      { type: 'automation', content: '🤖 Автоматически создана новая задача "Холодные звонки" с 500 контактами' },
+      { type: 'transfer', content: '🔄 Елена В. переведена с задачи "Опрос" на "Продажи" - конверсия выросла на 15%' },
+      { type: 'calendar', content: '📅 Запланировано 3 собеседования на завтра. Подготовить вопросы?' },
+      { type: 'success', content: '🎉 Цель дня достигнута! Команда обработала 150% плана по звонкам' }
+    ];
+    
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    return {
+      id: Date.now().toString(),
+      message: randomMessage.content,
+      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      type: randomMessage.type as 'tip' | 'warning' | 'success' | 'transfer' | 'calendar' | 'automation',
+      isRead: false,
+      priority: randomMessage.type === 'warning' ? 'high' as const : 'medium' as const,
+      actionRequired: randomMessage.type === 'warning' || randomMessage.type === 'calendar'
+    };
+  };
+
+  const createTaskFromTemplate = async () => {
+    if (!selectedTemplate || !uploadedContacts || !newTaskName) return;
+    
+    const template = taskTemplates.find(t => t.id === selectedTemplate);
+    if (!template) return;
+
+    const newTask: CallTask = {
+      id: Date.now().toString(),
+      name: newTaskName,
+      status: 'active',
+      contacts: template.expectedContacts,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      operators: 0
+    };
+
+    callTasks.push(newTask);
+    
+    setIsTaskCreationOpen(false);
+    setSelectedTemplate('');
+    setUploadedContacts(null);
+    setNewTaskName('');
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setUploadedContacts(file);
+    }
+  };
+
+  const createCalendarEvent = () => {
+    if (!newEvent.title || !newEvent.date || !newEvent.time) return;
+
+    const startDateTime = new Date(`${newEvent.date}T${newEvent.time}:00`);
+    const endDateTime = new Date(startDateTime.getTime() + parseInt(newEvent.duration) * 60000);
+
+    const event: CalendarEvent = {
+      id: Date.now().toString(),
+      title: newEvent.title,
+      description: newEvent.description,
+      startTime: startDateTime.toISOString(),
+      endTime: endDateTime.toISOString(),
+      type: newEvent.type,
+      attendees: [],
+      location: 'Офис'
+    };
+
+    calendarEvents.push(event);
+    setIsCalendarOpen(false);
+    setNewEvent({ title: '', description: '', date: '', time: '', duration: '60', type: 'interview' });
   };
 
   return (
@@ -413,15 +581,35 @@ const Index = () => {
 
               {/* Admin Controls */}
               {currentUser.role === 'admin' && (
-                <Button 
-                  onClick={() => setIsVideoConferenceOpen(true)} 
-                  variant="outline" 
-                  size="sm"
-                  className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                >
-                  <Icon name="Video" size={16} className="mr-2" />
-                  Видеоконференция
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setIsTaskCreationOpen(true)} 
+                    variant="outline" 
+                    size="sm"
+                    className="bg-coral-50 text-coral-700 border-coral-200 hover:bg-coral-100"
+                  >
+                    <Icon name="Plus" size={16} className="mr-2" />
+                    Создать задачу
+                  </Button>
+                  <Button 
+                    onClick={() => setIsCalendarOpen(true)} 
+                    variant="outline" 
+                    size="sm"
+                    className="bg-mystic-50 text-mystic-700 border-mystic-200 hover:bg-mystic-100"
+                  >
+                    <Icon name="Calendar" size={16} className="mr-2" />
+                    Календарь
+                  </Button>
+                  <Button 
+                    onClick={() => setIsVideoConferenceOpen(true)} 
+                    variant="outline" 
+                    size="sm"
+                    className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                  >
+                    <Icon name="Video" size={16} className="mr-2" />
+                    Видеоконференция
+                  </Button>
+                </div>
               )}
               
               <Avatar>
@@ -772,39 +960,245 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="ai">
-            <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-gradient-to-r from-coral-500 to-mystic-500 rounded-full flex items-center justify-center">
-                    <Icon name="Sparkles" className="h-4 w-4 text-white" />
-                  </div>
-                  ИИ-Помощник Trisha
-                </CardTitle>
-                <CardDescription>Искусственный интеллект для оптимизации работы</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="bg-gradient-to-r from-coral-50 to-mystic-50 p-6 rounded-lg">
-                    <h3 className="font-semibold mb-2">🦊 Привет! Я Trisha, ваш ИИ-помощник</h3>
-                    <p className="text-gray-600 mb-4">
-                      Я анализирую данные звонков, предлагаю оптимизации и помогаю повысить эффективность работы call-центра.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-white p-4 rounded-lg">
-                        <Icon name="TrendingUp" className="h-6 w-6 text-green-500 mb-2" />
-                        <h4 className="font-medium">Анализ эффективности</h4>
-                        <p className="text-sm text-gray-600">Отслеживаю конверсию и предлагаю улучшения</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Live AI Assistant */}
+              <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-gradient-to-r from-coral-500 to-mystic-500 rounded-full flex items-center justify-center animate-pulse">
+                      <Icon name="Sparkles" className="h-4 w-4 text-white" />
+                    </div>
+                    ИИ-Помощник Trisha
+                    <div className="flex items-center gap-1 ml-auto">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-xs text-green-600">Онлайн</span>
+                    </div>
+                  </CardTitle>
+                  <CardDescription>
+                    Умный ассистент с адаптивной личностью
+                    <Select value={aiPersonality.mode} onValueChange={(value) => setAiPersonality({...aiPersonality, mode: value as 'helpful' | 'enthusiastic' | 'analytical'})}>
+                      <SelectTrigger className="w-40 mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="helpful">😊 Помощник</SelectItem>
+                        <SelectItem value="enthusiastic">🚀 Энтузиаст</SelectItem>
+                        <SelectItem value="analytical">📊 Аналитик</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* AI Chat Interface */}
+                    <div className="bg-gradient-to-r from-coral-50 to-mystic-50 p-4 rounded-lg border-2 border-dashed border-coral-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-6 h-6 bg-gradient-to-r from-coral-500 to-mystic-500 rounded-full flex items-center justify-center">
+                          <span className="text-xs text-white">T</span>
+                        </div>
+                        <div className="typing-animation">
+                          <span></span><span></span><span></span>
+                        </div>
                       </div>
-                      <div className="bg-white p-4 rounded-lg">
-                        <Icon name="Bot" className="h-6 w-6 text-blue-500 mb-2" />
-                        <h4 className="font-medium">Умные рекомендации</h4>
-                        <p className="text-sm text-gray-600">Подсказываю оптимальное время для звонков</p>
+                      <p className="text-sm text-gray-700 italic">
+                        {aiPersonality.mode === 'helpful' && "💭 Анализирую последние звонки... Заметила, что Анна К. отлично работает с возражениями. Может поделиться опытом?"}
+                        {aiPersonality.mode === 'enthusiastic' && "🎯 Вау! Команда сегодня превысила план на 15%! Это потрясающе! Давайте удвоим усилия на завтра?"}
+                        {aiPersonality.mode === 'analytical' && "📈 Статистический анализ показывает: оптимальное время звонков 10:00-12:00 и 14:00-16:00. Конверсия выше на 23%."}
+                      </p>
+                    </div>
+
+                    {/* Quick AI Actions */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={generateLiveAIMessage}
+                        className="bg-coral-50 hover:bg-coral-100 text-coral-700 border-coral-200"
+                      >
+                        <Icon name="MessageCircle" size={14} className="mr-2" />
+                        Задать вопрос
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="bg-mystic-50 hover:bg-mystic-100 text-mystic-700 border-mystic-200"
+                      >
+                        <Icon name="Lightbulb" size={14} className="mr-2" />
+                        Совет дня
+                      </Button>
+                    </div>
+
+                    {/* AI Learning Indicators */}
+                    <div className="bg-white p-3 rounded-lg border">
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Icon name="Brain" size={16} className="text-purple-500" />
+                        Обучение ИИ
+                      </h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span>Анализ речевых паттернов</span>
+                          <span className="text-green-600">94%</span>
+                        </div>
+                        <Progress value={94} className="h-1" />
+                        <div className="flex justify-between text-xs">
+                          <span>Распознавание эмоций</span>
+                          <span className="text-blue-600">87%</span>
+                        </div>
+                        <Progress value={87} className="h-1" />
                       </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Live AI Insights */}
+              <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Icon name="Zap" className="h-5 w-5 text-yellow-500" />
+                    Живые инсайты
+                  </CardTitle>
+                  <CardDescription>Реальные уведомления от ИИ</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-96">
+                    <div className="space-y-3">
+                      {[
+                        generateLiveAIMessage(),
+                        generateLiveAIMessage(),
+                        generateLiveAIMessage(),
+                        generateLiveAIMessage()
+                      ].map((message, index) => (
+                        <div
+                          key={index}
+                          className={`p-3 rounded-lg border-l-4 ${
+                            message.type === 'warning' ? 'bg-red-50 border-red-400' :
+                            message.type === 'success' ? 'bg-green-50 border-green-400' :
+                            message.type === 'transfer' ? 'bg-blue-50 border-blue-400' :
+                            message.type === 'calendar' ? 'bg-purple-50 border-purple-400' :
+                            message.type === 'automation' ? 'bg-yellow-50 border-yellow-400' :
+                            'bg-gray-50 border-gray-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-800">{message.message}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-gray-500">{message.timestamp}</span>
+                                <Badge variant={message.priority === 'high' ? 'destructive' : 'secondary'} className="text-xs">
+                                  {message.priority === 'high' ? 'Важно' : message.priority === 'medium' ? 'Средне' : 'Обычно'}
+                                </Badge>
+                                {message.actionRequired && (
+                                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                                    Требует действий
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 ml-2">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <Icon name="MoreVertical" size={12} />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* AI Voice Controls */}
+              <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Icon name="Mic" className="h-5 w-5 text-blue-500" />
+                    Голосовое управление
+                  </CardTitle>
+                  <CardDescription>Взаимодействие с ИИ через голос</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center p-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mb-4 mx-auto">
+                          <Icon name="Mic" className="h-8 w-8 text-white" />
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">Нажмите и удерживайте для записи</p>
+                        <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+                          <Icon name="Radio" size={16} className="mr-2" />
+                          Говорить с ИИ
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium mb-2">Примеры команд:</h4>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        <li>• "Покажи статистику за сегодня"</li>
+                        <li>• "Кто лучший оператор сегодня?"</li>
+                        <li>• "Создай задачу холодных звонков"</li>
+                        <li>• "Запланируй собеседование на завтра"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* AI Performance Metrics */}
+              <Card className="bg-white/80 backdrop-blur-sm border-coral-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Icon name="Activity" className="h-5 w-5 text-green-500" />
+                    Производительность ИИ
+                  </CardTitle>
+                  <CardDescription>Метрики работы искусственного интеллекта</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">98.7%</div>
+                        <p className="text-xs text-gray-600">Точность предсказаний</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">247</div>
+                        <p className="text-xs text-gray-600">Рекомендаций сегодня</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Обработка запросов</span>
+                          <span>0.3с</span>
+                        </div>
+                        <Progress value={90} className="h-2" />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Успешные рекомендации</span>
+                          <span>92%</span>
+                        </div>
+                        <Progress value={92} className="h-2" />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Активность обучения</span>
+                          <span>Высокая</span>
+                        </div>
+                        <Progress value={85} className="h-2" />
+                      </div>
+                    </div>
+
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Icon name="Settings" size={14} className="mr-2" />
+                      Настройки ИИ
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Admin Panel */}
@@ -1238,6 +1632,232 @@ const Index = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Task Creation Modal */}
+        <Dialog open={isTaskCreationOpen} onOpenChange={setIsTaskCreationOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Icon name="Plus" className="h-5 w-5" />
+                Автоматическое создание задачи
+              </DialogTitle>
+              <DialogDescription>
+                Загрузите контакты и выберите шаблон для автоматического создания задачи
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              <div>
+                <Label htmlFor="task-name">Название задачи</Label>
+                <Input
+                  id="task-name"
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  placeholder="Введите название задачи..."
+                  className="mt-1"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="template-select">Выберите шаблон</Label>
+                <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Выберите шаблон задачи..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {taskTemplates.map(template => (
+                      <SelectItem key={template.id} value={template.id}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{template.name}</span>
+                          <Badge variant={template.priority === 'high' ? 'destructive' : 'secondary'} className="ml-2">
+                            {template.priority === 'high' ? 'Высокий' : template.priority === 'medium' ? 'Средний' : 'Низкий'}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTemplate && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600">
+                      <strong>Скрипт:</strong> {taskTemplates.find(t => t.id === selectedTemplate)?.script}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      <strong>Целевая аудитория:</strong> {taskTemplates.find(t => t.id === selectedTemplate)?.targetAudience}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="contacts-file">Загрузить контакты</Label>
+                <div className="mt-1">
+                  <input
+                    id="contacts-file"
+                    type="file"
+                    accept=".csv,.xlsx,.txt"
+                    onChange={handleFileUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-coral-50 file:text-coral-700 hover:file:bg-coral-100"
+                  />
+                  {uploadedContacts && (
+                    <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                      <Icon name="CheckCircle" size={16} />
+                      Файл загружен: {uploadedContacts.name}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button variant="outline" onClick={() => setIsTaskCreationOpen(false)}>
+                  Отмена
+                </Button>
+                <Button 
+                  onClick={createTaskFromTemplate}
+                  disabled={!selectedTemplate || !uploadedContacts || !newTaskName}
+                  className="bg-coral-500 hover:bg-coral-600"
+                >
+                  <Icon name="Zap" size={16} className="mr-2" />
+                  Создать задачу автоматически
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Calendar Modal */}
+        <Dialog open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Icon name="Calendar" className="h-5 w-5" />
+                Календарь событий
+              </DialogTitle>
+              <DialogDescription>
+                Планирование собеседований и встреч для задач найма
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              {/* Upcoming Events */}
+              <div>
+                <h3 className="font-medium mb-3">Предстоящие события</h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {calendarEvents.map(event => (
+                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-medium">{event.title}</p>
+                        <p className="text-sm text-gray-600">
+                          {new Date(event.startTime).toLocaleString('ru-RU', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </p>
+                      </div>
+                      <Badge variant={event.type === 'interview' ? 'default' : 'secondary'}>
+                        {event.type === 'interview' ? 'Собеседование' : event.type === 'training' ? 'Обучение' : 'Встреча'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add New Event */}
+              <div className="border-t pt-4">
+                <h3 className="font-medium mb-3">Создать событие</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Label htmlFor="event-title">Название события</Label>
+                    <Input
+                      id="event-title"
+                      value={newEvent.title}
+                      onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
+                      placeholder="Например: Собеседование с кандидатом"
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="event-date">Дата</Label>
+                    <Input
+                      id="event-date"
+                      type="date"
+                      value={newEvent.date}
+                      onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="event-time">Время</Label>
+                    <Input
+                      id="event-time"
+                      type="time"
+                      value={newEvent.time}
+                      onChange={(e) => setNewEvent({...newEvent, time: e.target.value})}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="event-type">Тип события</Label>
+                    <Select value={newEvent.type} onValueChange={(value: 'interview' | 'training' | 'meeting') => setNewEvent({...newEvent, type: value})}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="interview">Собеседование</SelectItem>
+                        <SelectItem value="training">Обучение</SelectItem>
+                        <SelectItem value="meeting">Встреча</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="event-duration">Длительность (мин)</Label>
+                    <Select value={newEvent.duration} onValueChange={(value) => setNewEvent({...newEvent, duration: value})}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="30">30 минут</SelectItem>
+                        <SelectItem value="60">1 час</SelectItem>
+                        <SelectItem value="90">1.5 часа</SelectItem>
+                        <SelectItem value="120">2 часа</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  <Label htmlFor="event-description">Описание</Label>
+                  <textarea
+                    id="event-description"
+                    value={newEvent.description}
+                    onChange={(e) => setNewEvent({...newEvent, description: e.target.value})}
+                    placeholder="Дополнительная информация о событии..."
+                    className="w-full mt-1 p-2 border border-gray-300 rounded-md text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button variant="outline" onClick={() => setIsCalendarOpen(false)}>
+                  Закрыть
+                </Button>
+                <Button 
+                  onClick={createCalendarEvent}
+                  disabled={!newEvent.title || !newEvent.date || !newEvent.time}
+                  className="bg-mystic-500 hover:bg-mystic-600"
+                >
+                  <Icon name="Plus" size={16} className="mr-2" />
+                  Создать событие
+                </Button>
               </div>
             </div>
           </DialogContent>
